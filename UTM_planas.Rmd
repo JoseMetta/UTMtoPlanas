@@ -18,22 +18,21 @@ library(sf)
 library(geosphere)
 library(dplyr)
 library(DT)
-
 ```
 ## Ruta del archivo CSV
 Cargando Datos:
 
 ```{r}
 archivo <- file.choose()
-datos <- read.csv(archivo, header = TRUE)
+p <- read.csv(archivo, header = TRUE)
 # Validar si las columnas requeridas existen
 columnas_requeridas <- c("PUNTO", "NORTE", "ESTE", "h")
-if (!all(columnas_requeridas %in% colnames(datos))) {
+if (!all(columnas_requeridas %in% colnames(p))) {
   stop("El archivo no contiene las columnas requeridas: PUNTO, NORTE, ESTE, h")
 }
-head(datos)
+head(p)
 ```
-## Especificando parámetros de entrada (Zona y  Hemisferio)
+# Especificando parámetros de entrada (Zona y  Hemisferio)
 ```{r}
 zona_utm <- 19    # Ejemplo: Zona UTM 19
 hemisferio <- "S" # Ejemplo: Hemisferio Sur
@@ -49,13 +48,14 @@ hemisferio <- "S" # Ejemplo: Hemisferio Sur
   }
 ```
 # Transformando a un objeto "sf"
+# Sf maneja de una manera óptima datos espaciales
 
 ```{r}
   # Convertir a un objeto 'sf'
-  puntos_utm <- st_as_sf(datos, coords = c("ESTE", "NORTE"), crs = crs_utm)
+  puntos_utm <- st_as_sf(p, coords = c("ESTE", "NORTE"), crs = crs_utm)
 ```
 
-# Transformando a WGS84 (EPSG:4326)
+# Transformando de EPSG:UTM a WGS84 (EPSG:4326)
 ```{r}
 puntos_wgs84 <- st_transform(puntos_utm, crs = 4326)
 head(puntos_wgs84)
@@ -63,8 +63,91 @@ head(puntos_wgs84)
 # Extrayendo Coordenadas
 
 ```{r}
-coords <- st_coordinates(puntos_wgs84)
-nrow(coords)
+m <- st_coordinates(puntos_wgs84)
+nrow(m)
+```
+# Función de Azimut
+```{r}
+## Función que calcula azimuth entre puntos
+st_azimuth = function(x, y) {
+  
+  # Checks
+  stopifnot(all(st_is(x, "POINT")))
+  stopifnot(all(st_is(y, "POINT")))
+  
+  # Extract geometry
+  x = st_geometry(x)
+  y = st_geometry(y)
+  
+  # Recycle 'x' or 'y' if necessary
+  if(length(x) < length(y)) {
+    ids = rep(1:length(x), length.out = length(y))
+    x = x[ids]
+  }
+  if(length(y) < length(x)) {
+    ids = rep(1:length(y), length.out = length(x))
+    y = y[ids]
+  }
+  
+  # Get coordinate matrices
+  x_coords = st_coordinates(x)
+  y_coords = st_coordinates(y)
+  
+  # Calculate azimuths
+  x1 = x_coords[, 1]
+  y1 = x_coords[, 2]
+  x2 = y_coords[, 1]
+  y2 = y_coords[, 2]
+  az = (180 / pi) * atan2(x2 - x1, y2 - y1)
+  names(az) = NULL
+  az[az < 0] = az[az < 0] + 360
+  
+  # Replace with 'NA' for identical points
+  az[x1 == x2 & y1 == y2] = NA
+  
+  # Return
+  return(az)
+}
+```
+# Incluyendo Constantes
+```{r}
+  a <- 6378137.00
+  b <- 6356752.314
+  e2 <- 0.00669438
+  et2 <- 0.006739497
+  c <- 6399593.626
+  k_0 <- 0.9996
+  
+  k_esc <- matrix(nrow = nrow(m), ncol = 1)
+  k_ele <- matrix(nrow = nrow(m), ncol = 1)
+  k_com <- matrix(nrow = nrow(m), ncol = 1)
+  azimut_grad <- matrix(nrow = nrow(m), ncol = 1)
+  azimut_rad <- matrix(nrow = nrow(m), ncol = 1)
+  distance_UTM <- matrix(nrow = nrow(m), ncol = 1)
+  distance_top <- matrix(nrow = nrow(m), ncol = 1)
+  e_top <- matrix(nrow = nrow(m), ncol = 1)
+  n_top <- matrix(nrow = nrow(m), ncol = 1)
 ```
 
+# Bucle que recorrerá todas las filas
+  for (i in 1:nrow(m)) {
+    x <- 500000 - p[i, 1]
+    q <- 0.000001 * x
+    
+    n_k <- a / ((1 - e2 * (sin(m[i, 2] * pi / 180))^2)^(1/2))
+    p_k <- (10^(12)) * ((1 + et2 * (cos(m[i, 2] * pi / 180))^2) / (2 * n_k^2 * k_0^2))
+    k_esc[i, 1] <- k_0 * (1 + p_k * q^2 + 0.00003 * q^4)
+    k_ele[i, 1] <- (a * (1 - e2)) / (a * (1 - e2) + p[i, 3] * (1 - e2 * (sin(m[i, 2] * pi / 180))^2)^(3/2))
+    k_com[i, 1] <- k_esc[i, 1] * k_ele[i, 1]
+    if (i == 1) {
+      azimut_grad[i, 1] <- 90
+    } else {
+      azimut_grad[i, 1] <- st_azimuth(puntos_utm[1, 1], puntos_utm[i, 1])
+    }
+    azimut_rad[i, 1] <- azimut_grad[i, 1] * pi / 180
+    distance_UTM[i, 1] <- st_distance(puntos_utm)[i, 1]
+    distance_top[i, 1] <- distance_UTM[i, 1] / mean(c(k_com[i, 1], k_com[1, 1]))
+    e_top[i, 1] <- p[1, 1] + distance_top[i, 1] * sin(azimut_rad[i, 1])
+    n_top[i, 1] <- p[1, 2] + distance_top[i, 1] * cos(azimut_rad[i, 1])
+  }
 

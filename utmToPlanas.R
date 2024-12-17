@@ -19,6 +19,48 @@ funcion_UTM_planas <- function(p, crs_input) {
   q <- st_transform(h, crs = 4326)
   m <- st_coordinates(q)
   
+  ## Función que calcula azimuth entre puntos
+  st_azimuth = function(x, y) {
+    
+    # Checks
+    stopifnot(all(st_is(x, "POINT")))
+    stopifnot(all(st_is(y, "POINT")))
+    
+    # Extract geometry
+    x = st_geometry(x)
+    y = st_geometry(y)
+    
+    # Recycle 'x' or 'y' if necessary
+    if(length(x) < length(y)) {
+      ids = rep(1:length(x), length.out = length(y))
+      x = x[ids]
+    }
+    if(length(y) < length(x)) {
+      ids = rep(1:length(y), length.out = length(x))
+      y = y[ids]
+    }
+    
+    # Get coordinate matrices
+    x_coords = st_coordinates(x)
+    y_coords = st_coordinates(y)
+    
+    # Calculate azimuths
+    x1 = x_coords[, 1]
+    y1 = x_coords[, 2]
+    x2 = y_coords[, 1]
+    y2 = y_coords[, 2]
+    az = (180 / pi) * atan2(x2 - x1, y2 - y1)
+    names(az) = NULL
+    az[az < 0] = az[az < 0] + 360
+    
+    # Replace with 'NA' for identical points
+    az[x1 == x2 & y1 == y2] = NA
+    
+    # Return
+    return(az)
+    
+  }
+  
   k_esc <- matrix(nrow = nrow(m), ncol = 1)
   k_ele <- matrix(nrow = nrow(m), ncol = 1)
   k_com <- matrix(nrow = nrow(m), ncol = 1)

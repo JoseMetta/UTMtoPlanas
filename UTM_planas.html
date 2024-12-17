@@ -384,75 +384,17 @@ library(sf)</code></pre>
 ## 
 ##     dataTableOutput, renderDataTable</code></pre>
 </div>
-<div id="función-de-cálculo-utmtoplanas" class="section level2">
-<h2>Función de Cálculo “UTMtoPlanas</h2>
-<pre class="r"><code># modules/utmToPlanas.R
-
-# Función de transformación UTM a Planas
-funcion_UTM_planas &lt;- function(p, crs_input) {
-  a &lt;- 6378137.00
-  b &lt;- 6356752.314
-  e2 &lt;- 0.00669438
-  et2 &lt;- 0.006739497
-  c &lt;- 6399593.626
-  k_0 &lt;- 0.9996
-  
-  h &lt;- st_as_sf(p, coords = c(&quot;E&quot;, &quot;N&quot;), crs = crs_input)
-  q &lt;- st_transform(h, crs = 4326)
-  m &lt;- st_coordinates(q)
-  
-  k_esc &lt;- matrix(nrow = nrow(m), ncol = 1)
-  k_ele &lt;- matrix(nrow = nrow(m), ncol = 1)
-  k_com &lt;- matrix(nrow = nrow(m), ncol = 1)
-  azimut_grad &lt;- matrix(nrow = nrow(m), ncol = 1)
-  azimut_rad &lt;- matrix(nrow = nrow(m), ncol = 1)
-  distance_UTM &lt;- matrix(nrow = nrow(m), ncol = 1)
-  distance_top &lt;- matrix(nrow = nrow(m), ncol = 1)
-  e_top &lt;- matrix(nrow = nrow(m), ncol = 1)
-  n_top &lt;- matrix(nrow = nrow(m), ncol = 1)
-  
-  for (i in 1:nrow(m)) {
-    x &lt;- 500000 - p[i, 1]
-    q &lt;- 0.000001 * x
-    
-    n_k &lt;- a / ((1 - e2 * (sin(m[i, 2] * pi / 180))^2)^(1/2))
-    p_k &lt;- (10^(12)) * ((1 + et2 * (cos(m[i, 2] * pi / 180))^2) / (2 * n_k^2 * k_0^2))
-    k_esc[i, 1] &lt;- k_0 * (1 + p_k * q^2 + 0.00003 * q^4)
-    k_ele[i, 1] &lt;- (a * (1 - e2)) / (a * (1 - e2) + p[i, 3] * (1 - e2 * (sin(m[i, 2] * pi / 180))^2)^(3/2))
-    k_com[i, 1] &lt;- k_esc[i, 1] * k_ele[i, 1]
-    if (i == 1) {
-      azimut_grad[i, 1] &lt;- 90
-    } else {
-      azimut_grad[i, 1] &lt;- st_azimuth(h[1, 1], h[i, 1])
-    }
-    azimut_rad[i, 1] &lt;- azimut_grad[i, 1] * pi / 180
-    distance_UTM[i, 1] &lt;- st_distance(h)[i, 1]
-    distance_top[i, 1] &lt;- distance_UTM[i, 1] / mean(c(k_com[i, 1], k_com[1, 1]))
-    e_top[i, 1] &lt;- p[1, 1] + distance_top[i, 1] * sin(azimut_rad[i, 1])
-    n_top[i, 1] &lt;- p[1, 2] + distance_top[i, 1] * cos(azimut_rad[i, 1])
-  }
-  
-  datos &lt;- data.frame(
-    &quot;Lat&quot; = m[, 2], &quot;Long&quot; = m[, 1], 
-    &quot;k_esc&quot; = k_esc, &quot;K_ele&quot; = k_ele, 
-    &quot;K_com&quot; = k_com, &quot;dist_UTM&quot; = distance_UTM, 
-    &quot;Acimut_rad&quot; = azimut_rad, &quot;acimut_grad&quot; = azimut_grad, 
-    &quot;dist_top&quot; = distance_top, &quot;E_top&quot; = e_top, &quot;N_top&quot; = n_top
-  )
-  return(datos)
-}</code></pre>
-</div>
 <div id="ruta-del-archivo-csv" class="section level2">
 <h2>Ruta del archivo CSV</h2>
 <p>Cargando Datos:</p>
 <pre class="r"><code>archivo &lt;- file.choose()
-datos &lt;- read.csv(archivo, header = TRUE)
+p &lt;- read.csv(archivo, header = TRUE)
 # Validar si las columnas requeridas existen
 columnas_requeridas &lt;- c(&quot;PUNTO&quot;, &quot;NORTE&quot;, &quot;ESTE&quot;, &quot;h&quot;)
-if (!all(columnas_requeridas %in% colnames(datos))) {
+if (!all(columnas_requeridas %in% colnames(p))) {
   stop(&quot;El archivo no contiene las columnas requeridas: PUNTO, NORTE, ESTE, h&quot;)
 }
-head(datos)</code></pre>
+head(p)</code></pre>
 <pre><code>##   PUNTO     ESTE   NORTE    h
 ## 1     1 362251.6 8306371 4196
 ## 2     2 362751.6 8306371 4330
@@ -461,8 +403,8 @@ head(datos)</code></pre>
 ## 5     5 364251.6 8306371 4184
 ## 6     6 364751.6 8306371 4110</code></pre>
 </div>
-<div id="especificando-parámetros-de-entrada-zona-y-hemisferio" class="section level2">
-<h2>Especificando parámetros de entrada (Zona y Hemisferio)</h2>
+<div id="especificando-parámetros-de-entrada-zona-y-hemisferio" class="section level1">
+<h1>Especificando parámetros de entrada (Zona y Hemisferio)</h1>
 <pre class="r"><code>zona_utm &lt;- 19    # Ejemplo: Zona UTM 19
 hemisferio &lt;- &quot;S&quot; # Ejemplo: Hemisferio Sur</code></pre>
 </div>
@@ -478,11 +420,14 @@ hemisferio &lt;- &quot;S&quot; # Ejemplo: Hemisferio Sur</code></pre>
 </div>
 <div id="transformando-a-un-objeto-sf" class="section level1">
 <h1>Transformando a un objeto “sf”</h1>
-<pre class="r"><code>  # Convertir a un objeto &#39;sf&#39;
-  puntos_utm &lt;- st_as_sf(datos, coords = c(&quot;ESTE&quot;, &quot;NORTE&quot;), crs = crs_utm)</code></pre>
 </div>
-<div id="transformando-a-wgs84-epsg4326" class="section level1">
-<h1>Transformando a WGS84 (EPSG:4326)</h1>
+<div id="sf-maneja-de-una-manera-óptima-datos-espaciales" class="section level1">
+<h1>Sf maneja de una manera óptima datos espaciales</h1>
+<pre class="r"><code>  # Convertir a un objeto &#39;sf&#39;
+  puntos_utm &lt;- st_as_sf(p, coords = c(&quot;ESTE&quot;, &quot;NORTE&quot;), crs = crs_utm)</code></pre>
+</div>
+<div id="transformando-de-epsgutm-a-wgs84-epsg4326" class="section level1">
+<h1>Transformando de EPSG:UTM a WGS84 (EPSG:4326)</h1>
 <pre class="r"><code>puntos_wgs84 &lt;- st_transform(puntos_utm, crs = 4326)
 head(puntos_wgs84)</code></pre>
 <pre><code>## Simple feature collection with 6 features and 2 fields
@@ -500,9 +445,92 @@ head(puntos_wgs84)</code></pre>
 </div>
 <div id="extrayendo-coordenadas" class="section level1">
 <h1>Extrayendo Coordenadas</h1>
-<pre class="r"><code>coords &lt;- st_coordinates(puntos_wgs84)
-nrow(coords)</code></pre>
+<pre class="r"><code>m &lt;- st_coordinates(puntos_wgs84)
+nrow(m)</code></pre>
 <pre><code>## [1] 5372</code></pre>
+</div>
+<div id="función-de-azimut" class="section level1">
+<h1>Función de Azimut</h1>
+<pre class="r"><code>## Función que calcula azimuth entre puntos
+st_azimuth = function(x, y) {
+  
+  # Checks
+  stopifnot(all(st_is(x, &quot;POINT&quot;)))
+  stopifnot(all(st_is(y, &quot;POINT&quot;)))
+  
+  # Extract geometry
+  x = st_geometry(x)
+  y = st_geometry(y)
+  
+  # Recycle &#39;x&#39; or &#39;y&#39; if necessary
+  if(length(x) &lt; length(y)) {
+    ids = rep(1:length(x), length.out = length(y))
+    x = x[ids]
+  }
+  if(length(y) &lt; length(x)) {
+    ids = rep(1:length(y), length.out = length(x))
+    y = y[ids]
+  }
+  
+  # Get coordinate matrices
+  x_coords = st_coordinates(x)
+  y_coords = st_coordinates(y)
+  
+  # Calculate azimuths
+  x1 = x_coords[, 1]
+  y1 = x_coords[, 2]
+  x2 = y_coords[, 1]
+  y2 = y_coords[, 2]
+  az = (180 / pi) * atan2(x2 - x1, y2 - y1)
+  names(az) = NULL
+  az[az &lt; 0] = az[az &lt; 0] + 360
+  
+  # Replace with &#39;NA&#39; for identical points
+  az[x1 == x2 &amp; y1 == y2] = NA
+  
+  # Return
+  return(az)
+}</code></pre>
+</div>
+<div id="incluyendo-constantes" class="section level1">
+<h1>Incluyendo Constantes</h1>
+<pre class="r"><code>  a &lt;- 6378137.00
+  b &lt;- 6356752.314
+  e2 &lt;- 0.00669438
+  et2 &lt;- 0.006739497
+  c &lt;- 6399593.626
+  k_0 &lt;- 0.9996
+  
+  k_esc &lt;- matrix(nrow = nrow(m), ncol = 1)
+  k_ele &lt;- matrix(nrow = nrow(m), ncol = 1)
+  k_com &lt;- matrix(nrow = nrow(m), ncol = 1)
+  azimut_grad &lt;- matrix(nrow = nrow(m), ncol = 1)
+  azimut_rad &lt;- matrix(nrow = nrow(m), ncol = 1)
+  distance_UTM &lt;- matrix(nrow = nrow(m), ncol = 1)
+  distance_top &lt;- matrix(nrow = nrow(m), ncol = 1)
+  e_top &lt;- matrix(nrow = nrow(m), ncol = 1)
+  n_top &lt;- matrix(nrow = nrow(m), ncol = 1)</code></pre>
+</div>
+<div id="bucle-que-recorrerá-todas-las-filas" class="section level1">
+<h1>Bucle que recorrerá todas las filas</h1>
+<p>for (i in 1:nrow(m)) { x &lt;- 500000 - p[i, 1] q &lt;- 0.000001 *
+x</p>
+<pre><code>n_k &lt;- a / ((1 - e2 * (sin(m[i, 2] * pi / 180))^2)^(1/2))
+p_k &lt;- (10^(12)) * ((1 + et2 * (cos(m[i, 2] * pi / 180))^2) / (2 * n_k^2 * k_0^2))
+k_esc[i, 1] &lt;- k_0 * (1 + p_k * q^2 + 0.00003 * q^4)
+k_ele[i, 1] &lt;- (a * (1 - e2)) / (a * (1 - e2) + p[i, 3] * (1 - e2 * (sin(m[i, 2] * pi / 180))^2)^(3/2))
+k_com[i, 1] &lt;- k_esc[i, 1] * k_ele[i, 1]
+if (i == 1) {
+  azimut_grad[i, 1] &lt;- 90
+} else {
+  azimut_grad[i, 1] &lt;- st_azimuth(puntos_utm[1, 1], puntos_utm[i, 1])
+}
+azimut_rad[i, 1] &lt;- azimut_grad[i, 1] * pi / 180
+distance_UTM[i, 1] &lt;- st_distance(puntos_utm)[i, 1]
+distance_top[i, 1] &lt;- distance_UTM[i, 1] / mean(c(k_com[i, 1], k_com[1, 1]))
+e_top[i, 1] &lt;- p[1, 1] + distance_top[i, 1] * sin(azimut_rad[i, 1])
+n_top[i, 1] &lt;- p[1, 2] + distance_top[i, 1] * cos(azimut_rad[i, 1])</code></pre>
+<p>}</p>
 </div>
 
 
