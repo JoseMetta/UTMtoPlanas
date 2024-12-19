@@ -7,7 +7,7 @@ library(dplyr)
 library(DT)
 
 # Función de transformación UTM a Planas
-funcion_UTM_planas <- function(p, crs_input) {
+funcion_UTM_planas <- function(p, crs_input) { #!! Cambiado a como estaba originalmente al carecer de una tercera columna 'altitud' 
   a <- 6378137.00
   b <- 6356752.314
   e2 <- 0.00669438
@@ -15,13 +15,13 @@ funcion_UTM_planas <- function(p, crs_input) {
   c <- 6399593.626
   k_0 <- 0.9996
   
+  # Convertir a sf usando columnas E y N
   h <- st_as_sf(p, coords = c("E", "N"), crs = crs_input)
   q <- st_transform(h, crs = 4326)
   m <- st_coordinates(q)
   
   ## Función que calcula azimuth entre puntos
   st_azimuth = function(x, y) {
-    
     # Checks
     stopifnot(all(st_is(x, "POINT")))
     stopifnot(all(st_is(y, "POINT")))
@@ -31,11 +31,11 @@ funcion_UTM_planas <- function(p, crs_input) {
     y = st_geometry(y)
     
     # Recycle 'x' or 'y' if necessary
-    if(length(x) < length(y)) {
+    if (length(x) < length(y)) {
       ids = rep(1:length(x), length.out = length(y))
       x = x[ids]
     }
-    if(length(y) < length(x)) {
+    if (length(y) < length(x)) {
       ids = rep(1:length(y), length.out = length(x))
       y = y[ids]
     }
@@ -56,29 +56,32 @@ funcion_UTM_planas <- function(p, crs_input) {
     # Replace with 'NA' for identical points
     az[x1 == x2 & y1 == y2] = NA
     
-    # Return
     return(az)
-    
   }
   
-  k_esc <- matrix(nrow = nrow(m), ncol = 1)
-  k_ele <- matrix(nrow = nrow(m), ncol = 1)
-  k_com <- matrix(nrow = nrow(m), ncol = 1)
-  azimut_grad <- matrix(nrow = nrow(m), ncol = 1)
-  azimut_rad <- matrix(nrow = nrow(m), ncol = 1)
-  distance_UTM <- matrix(nrow = nrow(m), ncol = 1)
-  distance_top <- matrix(nrow = nrow(m), ncol = 1)
-  e_top <- matrix(nrow = nrow(m), ncol = 1)
-  n_top <- matrix(nrow = nrow(m), ncol = 1)
+  # Inicializar matrices
+  n <- nrow(m)
+  k_esc <- matrix(nrow = n, ncol = 1)
+  k_ele <- matrix(nrow = n, ncol = 1)
+  k_com <- matrix(nrow = n, ncol = 1)
+  azimut_grad <- matrix(nrow = n, ncol = 1)
+  azimut_rad <- matrix(nrow = n, ncol = 1)
+  distance_UTM <- matrix(nrow = n, ncol = 1)
+  distance_top <- matrix(nrow = n, ncol = 1)
+  e_top <- matrix(nrow = n, ncol = 1)
+  n_top <- matrix(nrow = n, ncol = 1)
   
-  for (i in 1:nrow(m)) {
-    x <- 500000 - p[i, 1]
+  # Valor por defecto para la altura
+  altitud <- 0
+  
+  for (i in 1:n) {
+    x <- 500000 - p[i, "E"]
     q <- 0.000001 * x
     
     n_k <- a / ((1 - e2 * (sin(m[i, 2] * pi / 180))^2)^(1/2))
     p_k <- (10^(12)) * ((1 + et2 * (cos(m[i, 2] * pi / 180))^2) / (2 * n_k^2 * k_0^2))
     k_esc[i, 1] <- k_0 * (1 + p_k * q^2 + 0.00003 * q^4)
-    k_ele[i, 1] <- (a * (1 - e2)) / (a * (1 - e2) + p[i, 3] * (1 - e2 * (sin(m[i, 2] * pi / 180))^2)^(3/2))
+    k_ele[i, 1] <- (a * (1 - e2)) / (a * (1 - e2) + altitud * (1 - e2 * (sin(m[i, 2] * pi / 180))^2)^(3/2))
     k_com[i, 1] <- k_esc[i, 1] * k_ele[i, 1]
     if (i == 1) {
       azimut_grad[i, 1] <- 90
@@ -88,10 +91,11 @@ funcion_UTM_planas <- function(p, crs_input) {
     azimut_rad[i, 1] <- azimut_grad[i, 1] * pi / 180
     distance_UTM[i, 1] <- st_distance(h)[i, 1]
     distance_top[i, 1] <- distance_UTM[i, 1] / mean(c(k_com[i, 1], k_com[1, 1]))
-    e_top[i, 1] <- p[1, 1] + distance_top[i, 1] * sin(azimut_rad[i, 1])
-    n_top[i, 1] <- p[1, 2] + distance_top[i, 1] * cos(azimut_rad[i, 1])
+    e_top[i, 1] <- p[1, "E"] + distance_top[i, 1] * sin(azimut_rad[i, 1])
+    n_top[i, 1] <- p[1, "N"] + distance_top[i, 1] * cos(azimut_rad[i, 1])
   }
   
+  # Crear data.frame de resultados
   datos <- data.frame(
     "Lat" = m[, 2], "Long" = m[, 1], 
     "k_esc" = k_esc, "K_ele" = k_ele, 
@@ -101,6 +105,10 @@ funcion_UTM_planas <- function(p, crs_input) {
   )
   return(datos)
 }
+
+
+# Leer el archivo CSV
+epsgGeodesicUtmFile <- read.csv("www/epsgGeodesicUtm.csv", stringsAsFactors = FALSE)
 
 # UI del módulo
 UTMPlanasModuleUi <- function(id) {
@@ -112,11 +120,12 @@ UTMPlanasModuleUi <- function(id) {
       sidebarPanel(
         width = 3,
         fileInput(ns("archivoC"), label = h3("Subir archivo con datos"), accept = ".csv"),
-        selectInput(ns("crs"), "Seleccione el CRS", choices = NULL),  # Aquí debes cargar tus CRS
+        selectInput(ns("crs"), "Seleccione el CRS", choices = epsgGeodesicUtmFile$SRC),  # Aquí debes cargar tus CRS
         actionButton(ns("process"), "Procesar")
       ),
       mainPanel(
         h4("Resultados"),
+        uiOutput(ns("panel_utm_planas")),
         uiOutput(ns("results_ui"))
       )
     )
@@ -145,16 +154,26 @@ UTMPlanasModuleServer <- function(input, output, session) {
     
     # Guardar el archivo en datos reactivos
     datos$epsgGeodesicUtmFile <- epsgGeodesicUtmFile
+    
+    print("Archivo base de CRS guardado exitosamente")
   })
   
+  observeEvent(input$process, {
+    req(input$archivoC)
+    print("Archivo cargado por usuario:")
+    print(input$archivoC)
+  })
+  
+  observeEvent(input$process, { #INICIO
+    req(input$archivoC)
   
   output$panel_utm_planas <- renderUI(expr = if (!is.null(input$archivoC)) {
-    
-    
+    print("Renderizando panel UTM Planas")
     fluidPage(
       sidebarPanel(
         width = 3,
-        selectInput(ns("crs"), "CRS", epsgGeodesicUtmFile$SRC),
+        #selectInput(ns("crs"), "CRS", epsgGeodesicUtmFile$SRC),
+        h4("UTM correction"),
         actionButton(ns("inicio_correccion_UTM"), label = "Start", class = "btn-info")
       ),
       mainPanel(
@@ -167,10 +186,12 @@ UTMPlanasModuleServer <- function(input, output, session) {
     NULL
   })
   
+  }) #FINAL
+  
   ## Genera la tabla al momento de cargar los datos
   output$tabla_inicio_utm <- renderDataTable({
     req(input$archivoC)
-    datos$puntos_coordenadasUTM <- read.csv(input$archivoC$datapath, sep = ",", header = FALSE)
+    datos$puntos_coordenadasUTM <- read.csv(input$archivoC$datapath, sep = ",", header = TRUE)
     datatable(datos$puntos_coordenadasUTM, options = list(
       pageLength = 5,
       scrollX = TRUE,
@@ -180,6 +201,7 @@ UTMPlanasModuleServer <- function(input, output, session) {
   
   ####### Realiza el ajuste de UTM planas
   observeEvent(input$inicio_correccion_UTM, {
+    print("Iniciando ajuste de correcciones")
     if (length(input$tabla_inicio_utm_rows_selected) == 0) {
       showNotification(
         h4("Select a row regarding the pivot point"), 
@@ -192,7 +214,8 @@ UTMPlanasModuleServer <- function(input, output, session) {
       datos$puntos_coordenadasUTM[input$tabla_inicio_utm_rows_selected, ], 
       datos$puntos_coordenadasUTM[-input$tabla_inicio_utm_rows_selected, ]
     )
-    datos_utm <- datos$datos_utm_ordenados[, c(1:4)] # Ajusta índices si es necesario
+    #print(datos$datos_utm_ordenados)
+    datos_utm <- datos$datos_utm_ordenados[, c(1:2)] # Ajusta índices si es necesario
     
     epsgGeodesicUtmFile <- read.csv("www/epsgGeodesicUtm.csv")
     crs_UTM_input <- epsgGeodesicUtmFile[epsgGeodesicUtmFile$SRC %in% input$crs, "EPSG"]
