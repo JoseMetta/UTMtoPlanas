@@ -7,7 +7,7 @@ library(dplyr)
 library(DT)
 
 # Función de transformación UTM a Planas
-funcion_UTM_planas <- function(p, crs_input) { #!! Cambiado a como estaba originalmente al carecer de una tercera columna 'altitud' 
+funcion_UTM_planas <- function(p, crs_input) {
   a <- 6378137.00
   b <- 6356752.314
   e2 <- 0.00669438
@@ -16,7 +16,7 @@ funcion_UTM_planas <- function(p, crs_input) { #!! Cambiado a como estaba origin
   k_0 <- 0.9996
   
   # Convertir a sf usando columnas E y N
-  h <- st_as_sf(p, coords = c("E", "N"), crs = crs_input)
+  h <- st_as_sf(p, coords = c("ESTE", "NORTE"), crs = crs_input)
   q <- st_transform(h, crs = 4326)
   m <- st_coordinates(q)
   
@@ -60,28 +60,24 @@ funcion_UTM_planas <- function(p, crs_input) { #!! Cambiado a como estaba origin
   }
   
   # Inicializar matrices
-  n <- nrow(m)
-  k_esc <- matrix(nrow = n, ncol = 1)
-  k_ele <- matrix(nrow = n, ncol = 1)
-  k_com <- matrix(nrow = n, ncol = 1)
-  azimut_grad <- matrix(nrow = n, ncol = 1)
-  azimut_rad <- matrix(nrow = n, ncol = 1)
-  distance_UTM <- matrix(nrow = n, ncol = 1)
-  distance_top <- matrix(nrow = n, ncol = 1)
-  e_top <- matrix(nrow = n, ncol = 1)
-  n_top <- matrix(nrow = n, ncol = 1)
+  k_esc <- matrix(nrow = nrow(m), ncol = 1)
+  k_ele <- matrix(nrow = nrow(m), ncol = 1)
+  k_com <- matrix(nrow = nrow(m), ncol = 1)
+  azimut_grad <- matrix(nrow = nrow(m), ncol = 1)
+  azimut_rad <- matrix(nrow = nrow(m), ncol = 1)
+  distance_UTM <- matrix(nrow = nrow(m), ncol = 1)
+  distance_top <- matrix(nrow = nrow(m), ncol = 1)
+  e_top <- matrix(nrow = nrow(m), ncol = 1)
+  n_top <- matrix(nrow = nrow(m), ncol = 1)
   
-  # Valor por defecto para la altura
-  altitud <- 0
-  
-  for (i in 1:n) {
-    x <- 500000 - p[i, "E"]
+  for (i in 1:nrow(m)) {
+    x <- 500000 - p[i, 1]
     q <- 0.000001 * x
     
     n_k <- a / ((1 - e2 * (sin(m[i, 2] * pi / 180))^2)^(1/2))
     p_k <- (10^(12)) * ((1 + et2 * (cos(m[i, 2] * pi / 180))^2) / (2 * n_k^2 * k_0^2))
     k_esc[i, 1] <- k_0 * (1 + p_k * q^2 + 0.00003 * q^4)
-    k_ele[i, 1] <- (a * (1 - e2)) / (a * (1 - e2) + altitud * (1 - e2 * (sin(m[i, 2] * pi / 180))^2)^(3/2))
+    k_ele[i, 1] <- (a * (1 - e2)) / (a * (1 - e2) + p[i, 3] * (1 - e2 * (sin(m[i, 2] * pi / 180))^2)^(3/2))
     k_com[i, 1] <- k_esc[i, 1] * k_ele[i, 1]
     if (i == 1) {
       azimut_grad[i, 1] <- 90
@@ -91,8 +87,8 @@ funcion_UTM_planas <- function(p, crs_input) { #!! Cambiado a como estaba origin
     azimut_rad[i, 1] <- azimut_grad[i, 1] * pi / 180
     distance_UTM[i, 1] <- st_distance(h)[i, 1]
     distance_top[i, 1] <- distance_UTM[i, 1] / mean(c(k_com[i, 1], k_com[1, 1]))
-    e_top[i, 1] <- p[1, "E"] + distance_top[i, 1] * sin(azimut_rad[i, 1])
-    n_top[i, 1] <- p[1, "N"] + distance_top[i, 1] * cos(azimut_rad[i, 1])
+    e_top[i, 1] <- p[1, 1] + distance_top[i, 1] * sin(azimut_rad[i, 1])
+    n_top[i, 1] <- p[1, 2] + distance_top[i, 1] * cos(azimut_rad[i, 1])
   }
   
   # Crear data.frame de resultados
@@ -214,12 +210,10 @@ UTMPlanasModuleServer <- function(input, output, session) {
       datos$puntos_coordenadasUTM[input$tabla_inicio_utm_rows_selected, ], 
       datos$puntos_coordenadasUTM[-input$tabla_inicio_utm_rows_selected, ]
     )
-    #print(datos$datos_utm_ordenados)
-    datos_utm <- datos$datos_utm_ordenados[, c(1:2)] # Ajusta índices si es necesario
-    
+    datos_utm <- datos$datos_utm_ordenados[, c(1:4)] # Ajusta índices si es necesario
     epsgGeodesicUtmFile <- read.csv("www/epsgGeodesicUtm.csv")
     crs_UTM_input <- epsgGeodesicUtmFile[epsgGeodesicUtmFile$SRC %in% input$crs, "EPSG"]
-    
+    print("Entrando a función UTM planas")
     datos$correccion_utm <- funcion_UTM_planas(datos_utm, as.numeric(crs_UTM_input))
   })
   
