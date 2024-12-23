@@ -5,6 +5,7 @@ library(sf)
 library(geosphere)
 library(dplyr)
 library(DT)
+library(shinycssloaders)
 
 # Función de transformación UTM a Planas
 funcion_UTM_planas <- function(p, crs_input) {
@@ -71,6 +72,8 @@ funcion_UTM_planas <- function(p, crs_input) {
   n_top <- matrix(nrow = nrow(m), ncol = 1)
   
   for (i in 1:nrow(m)) {
+    cat(sprintf("Procesando fila %d\n", i))
+    flush.console()
     x <- 500000 - p[i, 1]
     q <- 0.000001 * x
     
@@ -87,8 +90,8 @@ funcion_UTM_planas <- function(p, crs_input) {
     azimut_rad[i, 1] <- azimut_grad[i, 1] * pi / 180
     distance_UTM[i, 1] <- st_distance(h)[i, 1]
     distance_top[i, 1] <- distance_UTM[i, 1] / mean(c(k_com[i, 1], k_com[1, 1]))
-    e_top[i, 1] <- p[1, 1] + distance_top[i, 1] * sin(azimut_rad[i, 1])
-    n_top[i, 1] <- p[1, 2] + distance_top[i, 1] * cos(azimut_rad[i, 1])
+    n_top[i, 1] <- p[1, 1] + distance_top[i, 1] * sin(azimut_rad[i, 1]) # swap entre columnas Norte y Este
+    e_top[i, 1] <- p[1, 2] + distance_top[i, 1] * cos(azimut_rad[i, 1])
   }
   
   # Crear data.frame de resultados
@@ -214,7 +217,7 @@ UTMPlanasModuleServer <- function(input, output, session) {
     epsgGeodesicUtmFile <- read.csv("www/epsgGeodesicUtm.csv")
     crs_UTM_input <- epsgGeodesicUtmFile[epsgGeodesicUtmFile$SRC %in% input$crs, "EPSG"]
     print("Entrando a función UTM planas")
-    datos$correccion_utm <- funcion_UTM_planas(datos_utm, as.numeric(crs_UTM_input))
+    datos$correccion_utm <- funcion_UTM_planas(datos_utm[,-1], as.numeric(crs_UTM_input))
   })
   
   output$results_ui <- renderUI({
@@ -228,7 +231,13 @@ UTMPlanasModuleServer <- function(input, output, session) {
         )
       )
     } else {
-      h4("No hay resultados aún.")
+      fluidRow(
+        column(
+          12,
+          h4("No hay resultados aún."),
+          withSpinner(div(style = "height: 50px;"), color = "#0dc5c1") # Animación en la zona sin resultados
+        )
+      )
     }
   })
   
