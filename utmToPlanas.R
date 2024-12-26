@@ -235,7 +235,7 @@ UTMPlanasModuleServer <- function(input, output, session) {
         column(
           12,
           h4("No hay resultados aún."),
-          withSpinner(div(style = "height: 50px;"), color = "#0dc5c1") # Animación en la zona sin resultados
+          withSpinner(uiOutput("empty_output"), color = "#0dc5c1"), # Animación en la zona sin resultados
         )
       )
     }
@@ -255,4 +255,9 @@ UTMPlanasModuleServer <- function(input, output, session) {
       write.csv(datos$correccion_utm, file, row.names = FALSE)
     }
   )
+  
+  # TODO: GENERACION DE MAPA INTERACTIVO
+  
+  
+  
 }
