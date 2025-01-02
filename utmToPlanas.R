@@ -278,7 +278,7 @@ UTMPlanasModuleServer <- function(input, output, session) {
   output$panel_mapa <- renderUI({
     if (!is.null(datos$mapa_datos_input) && !is.null(datos$mapa_datos_resultados)) {
       print("Datos no nulos de entrada. Renderizando mapa")
-      leafletOutput("mapa")
+      leafletOutput(ns("mapa"))
     } else {
       h4("No hay datos disponibles para generar el mapa.")
     }
@@ -329,8 +329,8 @@ UTMPlanasModuleServer <- function(input, output, session) {
     print("Mapa_datos_input: ")
     print(datos$mapa_datos_input)
     
-    sf_datos_resultados<-st_as_sf(datos_mapa_UTM, coords=c("E_top","N_top"), crs=as.numeric(crs_mapa_UTM_input))
-    
+    sf_datos_resultados<-st_as_sf(datos_mapa_UTM, coords=c("N_top","E_top"), crs=as.numeric(crs_mapa_UTM_input)) # orden invertido respecto al original
+
     sf_datos_resultados<-st_transform(sf_datos_resultados, 4326)
     
     names(sf_datos_resultados)[1]<-c("Punto") ## No cambiar este nombre, de el depende el etiquetado del mapa
