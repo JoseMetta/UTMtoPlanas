@@ -6,6 +6,10 @@ library(geosphere)
 library(dplyr)
 library(DT)
 library(shinycssloaders)
+library(leaflet)
+library(leaflet.extras)
+library(leafem)
+library(sodium)
 
 # Función de transformación UTM a Planas
 funcion_UTM_planas <- function(p, crs_input) {
@@ -71,7 +75,7 @@ funcion_UTM_planas <- function(p, crs_input) {
   e_top <- matrix(nrow = nrow(m), ncol = 1)
   n_top <- matrix(nrow = nrow(m), ncol = 1)
   
-  for (i in 1:nrow(m)) {
+  for (i in 1:nrow(m)) { # O(n)
     cat(sprintf("Procesando fila %d\n", i))
     flush.console()
     x <- 500000 - p[i, 1]
@@ -85,10 +89,10 @@ funcion_UTM_planas <- function(p, crs_input) {
     if (i == 1) {
       azimut_grad[i, 1] <- 90
     } else {
-      azimut_grad[i, 1] <- st_azimuth(h[1, 1], h[i, 1])
-    }
+      azimut_grad[i, 1] <- st_azimuth(h[1, 1], h[i, 1]) # O(n)
+    } #hacia arriba O(1)
     azimut_rad[i, 1] <- azimut_grad[i, 1] * pi / 180
-    distance_UTM[i, 1] <- st_distance(h)[i, 1]
+    distance_UTM[i, 1] <- st_distance(h)[i, 1] # O(n)
     distance_top[i, 1] <- distance_UTM[i, 1] / mean(c(k_com[i, 1], k_com[1, 1]))
     n_top[i, 1] <- p[1, 1] + distance_top[i, 1] * sin(azimut_rad[i, 1]) # swap entre columnas Norte y Este
     e_top[i, 1] <- p[1, 2] + distance_top[i, 1] * cos(azimut_rad[i, 1])
@@ -119,22 +123,25 @@ UTMPlanasModuleUi <- function(id) {
       sidebarPanel(
         width = 3,
         fileInput(ns("archivoC"), label = h3("Subir archivo con datos"), accept = ".csv"),
-        selectInput(ns("crs"), "Seleccione el CRS", choices = epsgGeodesicUtmFile$SRC),  # Aquí debes cargar tus CRS
+        selectInput(ns("crs"), "Seleccione el CRS", choices = epsgGeodesicUtmFile$SRC, "Seleccione el CRS para el mapa generado"),  # Aquí debes cargar tus CRS
         actionButton(ns("process"), "Procesar")
       ),
       mainPanel(
         h4("Resultados"),
         uiOutput(ns("panel_utm_planas")),
-        uiOutput(ns("results_ui"))
+        #uiOutput(ns("results_ui"))
       )
-    )
+    ),
+    # Sección adicional condicional, al mismo nivel que el título
+    uiOutput(ns("results_ui"))
   )
 }
 
 # Servidor del módulo
 UTMPlanasModuleServer <- function(input, output, session) {
   ns <- session$ns
-  datos <- reactiveValues()
+  #datos <- reactiveValues()
+  datos <- reactiveValues(mapa_datos_input = NULL, mapa_datos_resultados = NULL)
   
   ## Genera el panel de procesos al momento de cargar los datos
   # Cargar CRS al inicio
@@ -220,6 +227,9 @@ UTMPlanasModuleServer <- function(input, output, session) {
     datos$correccion_utm <- funcion_UTM_planas(datos_utm[,-1], as.numeric(crs_UTM_input))
   })
   
+  ## Genera la ventana del mapa cuando los datos fueron creados correctamente
+  ## MAPA
+  
   output$results_ui <- renderUI({
     if (!is.null(datos$correccion_utm)) {
       fluidRow(
@@ -227,7 +237,13 @@ UTMPlanasModuleServer <- function(input, output, session) {
           12, 
           h3("Resultados"),
           dataTableOutput(ns("results_table")),
-          downloadLink(ns('descarga_utm_correccion'), 'Descargar Resultados')
+          downloadLink(ns('descarga_utm_correccion'), 'Descargar Resultados'),
+          h1("Generación de mapa interactivo"),
+          column(10,
+                 selectInput(ns("crs_mapa_UTM"), "Seleccione el CRS", epsgGeodesicUtmFile$SRC, "Seleccione el sistema de coordenadas CRS para la conversión"),
+                 actionButton(ns("crear_mapa_utm"), "Start"),
+                 uiOutput(ns("panel_mapa")) 
+          )
         )
       )
     } else {
@@ -235,11 +251,12 @@ UTMPlanasModuleServer <- function(input, output, session) {
         column(
           12,
           h4("No hay resultados aún."),
-          withSpinner(uiOutput("empty_output"), color = "#0dc5c1"), # Animación en la zona sin resultados
+          withSpinner(uiOutput("empty_output"), color = "#0dc5c1")
         )
       )
     }
   })
+  
   
   output$results_table <- renderDataTable({
     req(datos$correccion_utm)
@@ -258,6 +275,68 @@ UTMPlanasModuleServer <- function(input, output, session) {
   
   # TODO: GENERACION DE MAPA INTERACTIVO
   
+  output$panel_mapa <- renderUI({
+    if (!is.null(datos$mapa_datos_input) && !is.null(datos$mapa_datos_resultados)) {
+      print("Datos no nulos de entrada. Renderizando mapa")
+      leafletOutput("mapa")
+    } else {
+      h4("No hay datos disponibles para generar el mapa.")
+    }
+  })
   
+  ## Crea el mapa
+  output$mapa<- renderLeaflet({
+    req(datos$mapa_datos_input, datos$mapa_datos_resultados)
+    
+    print("Datos de entrada para el mapa:")
+    print(st_geometry(datos$mapa_datos_input))
+    print("Datos de resultados para el mapa:")
+    print(st_geometry(datos$mapa_datos_resultados))
+    
+    mapa<-leaflet() %>%
+      addProviderTiles(providers$OpenStreetMap.Mapnik, group = "OpenStreetMap.Mapnik") %>%
+      addProviderTiles(providers$Esri.WorldImagery, group = "Esri.WorldImagery") %>%
+      addLayersControl(
+        baseGroups = c("OpenStreetMap.Mapnik","Esri.WorldImagery"),
+        overlayGroups = c("Control Points", "Results")
+      )%>%
+      addCircleMarkers(data = datos$mapa_datos_input, color = "red", group = "Control Points",
+                       label = ~as.character(datos$mapa_datos_input$Punto))%>%
+      addCircleMarkers(data=datos$mapa_datos_resultados, color="blue", group = "Results",
+                       label = ~as.character(datos$mapa_datos_input$Punto))
+    
+    mapa
+  })
+  
+  ## Genera los datos para crea el mapa
+  observeEvent(input$crear_mapa_utm,{
+    print("Generando mapa")
+    print(datos$datos_utm_ordenados)
+    datos_utm<-datos$datos_utm_ordenados[, c(1:4)]
+    
+    ##crs cargados
+    epsgGeodesicUtmFile <- read.csv("www/epsgGeodesicUtm.csv")
+    crs_mapa_UTM_input <- epsgGeodesicUtmFile[epsgGeodesicUtmFile$SRC %in% input$crs_mapa_UTM,c("EPSG")]
+    print("Crs cargados")
+    datos_mapa_UTM<-cbind(datos_utm,datos$correccion_utm)
+    print("Datos_mapa_UTM")
+    print(datos_mapa_UTM)
+    
+    sf_datos_locales<-st_as_sf(datos_mapa_UTM, coords=c("Long","Lat"), crs=4326)
+    
+    names(sf_datos_locales)[1]<-c("Punto")## No cambiar este nombre, de el depende el etiquetado del mapa
+    datos$mapa_datos_input<-sf_datos_locales##Datos de entrada
+    print("Mapa_datos_input: ")
+    print(datos$mapa_datos_input)
+    
+    sf_datos_resultados<-st_as_sf(datos_mapa_UTM, coords=c("E_top","N_top"), crs=as.numeric(crs_mapa_UTM_input))
+    
+    sf_datos_resultados<-st_transform(sf_datos_resultados, 4326)
+    
+    names(sf_datos_resultados)[1]<-c("Punto") ## No cambiar este nombre, de el depende el etiquetado del mapa
+    datos$mapa_datos_resultados<-sf_datos_resultados ## Datos de resultados
+    print("Mapa_datos_resultados: ")
+    print(datos$mapa_datos_resultados)
+  })
   
 }
