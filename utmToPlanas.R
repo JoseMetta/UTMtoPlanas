@@ -104,7 +104,7 @@ funcion_UTM_planas <- function(p, crs_input) {
     "k_esc" = k_esc, "K_ele" = k_ele, 
     "K_com" = k_com, "dist_UTM" = distance_UTM, 
     "Acimut_rad" = azimut_rad, "acimut_grad" = azimut_grad, 
-    "dist_top" = distance_top, "E_top" = e_top, "N_top" = n_top
+    "dist_top" = distance_top, "N_top" = e_top, "E_top" = n_top
   )
   return(datos)
 }
@@ -221,6 +221,7 @@ UTMPlanasModuleServer <- function(input, output, session) {
       datos$puntos_coordenadasUTM[-input$tabla_inicio_utm_rows_selected, ]
     )
     datos_utm <- datos$datos_utm_ordenados[, c(1:4)] # Ajusta índices si es necesario
+    
     epsgGeodesicUtmFile <- read.csv("www/epsgGeodesicUtm.csv")
     crs_UTM_input <- epsgGeodesicUtmFile[epsgGeodesicUtmFile$SRC %in% input$crs, "EPSG"]
     print("Entrando a función UTM planas")
@@ -330,7 +331,7 @@ UTMPlanasModuleServer <- function(input, output, session) {
     print(datos$mapa_datos_input)
     
     sf_datos_resultados<-st_as_sf(datos_mapa_UTM, coords=c("N_top","E_top"), crs=as.numeric(crs_mapa_UTM_input)) # orden invertido respecto al original
-
+    # TODO: Agregar manejo de NaN's
     sf_datos_resultados<-st_transform(sf_datos_resultados, 4326)
     
     names(sf_datos_resultados)[1]<-c("Punto") ## No cambiar este nombre, de el depende el etiquetado del mapa
