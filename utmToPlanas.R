@@ -226,6 +226,8 @@ UTMPlanasModuleServer <- function(input, output, session) {
     crs_UTM_input <- epsgGeodesicUtmFile[epsgGeodesicUtmFile$SRC %in% input$crs, "EPSG"]
     print("Entrando a función UTM planas")
     datos$correccion_utm <- funcion_UTM_planas(datos_utm[,-1], as.numeric(crs_UTM_input))
+    #añadido de nombres de puntos
+    datos$correccion_utm <- cbind(Punto = datos_utm[,1], datos$correccion_utm) # unir columnas de datos$correccion_utm con la primera columna de datos_utm que se llama "Punto"
   })
   
   ## Genera la ventana del mapa cuando los datos fueron creados correctamente
@@ -330,8 +332,20 @@ UTMPlanasModuleServer <- function(input, output, session) {
     print("Mapa_datos_input: ")
     print(datos$mapa_datos_input)
     
-    sf_datos_resultados<-st_as_sf(datos_mapa_UTM, coords=c("N_top","E_top"), crs=as.numeric(crs_mapa_UTM_input)) # orden invertido respecto al original
     # TODO: Agregar manejo de NaN's
+    
+    datos_mapa_UTM <- datos_mapa_UTM[complete.cases(datos_mapa_UTM[, c("E_top", "N_top")]), ]
+    
+    if (any(is.na(datos_mapa_UTM$E_top) | is.na(datos_mapa_UTM$N_top))) {
+      showNotification(
+        "Advertencia: Se encontraron coordenadas faltantes y se han eliminado.",
+        type = "warning",  # Tipo de notificación: mensaje de advertencia
+        duration = 3       # Duración en segundos
+      )
+    }
+    
+    sf_datos_resultados<-st_as_sf(datos_mapa_UTM, coords=c("E_top","N_top"), crs=as.numeric(crs_mapa_UTM_input)) # orden invertido respecto al original
+    
     sf_datos_resultados<-st_transform(sf_datos_resultados, 4326)
     
     names(sf_datos_resultados)[1]<-c("Punto") ## No cambiar este nombre, de el depende el etiquetado del mapa
