@@ -123,6 +123,7 @@ UTMPlanasModuleUi <- function(id) {
       sidebarPanel(
         width = 3,
         fileInput(ns("archivoC"), label = h3("Subir archivo con datos"), accept = ".csv"),
+        helpText("Nota: Para archivos CSV de más de 1500 filas, considere un tiempo de conversión considerablemente elevado."),
         selectInput(ns("crs"), "Seleccione el CRS", choices = epsgGeodesicUtmFile$SRC, "Seleccione el CRS para el mapa generado"),  # Aquí debes cargar tus CRS
         actionButton(ns("process"), "Procesar")
       ),
