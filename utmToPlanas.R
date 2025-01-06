@@ -180,7 +180,7 @@ UTMPlanasModuleServer <- function(input, output, session) {
         width = 3,
         #selectInput(ns("crs"), "CRS", epsgGeodesicUtmFile$SRC),
         h4("UTM correction"),
-        actionButton(ns("inicio_correccion_UTM"), label = "Start", class = "btn-info")
+        actionButton(ns("inicio_mensaje_UTM"), label = "Start", class = "btn-info")
       ),
       mainPanel(
         class = "well",
@@ -205,8 +205,20 @@ UTMPlanasModuleServer <- function(input, output, session) {
     ), selection = 'single')
   })
   
+  observeEvent(input$inicio_mensaje_UTM, {
+    # Mostrar el mensaje modal inicial
+    showModal(modalDialog(
+      title = "Importante",
+      fluidRow(h4("Asegúrese de que su archivo CSV tenga el siguiente orden y nombres de columnas: Punto, ESTE, NORTE, h")),
+      footer = actionButton(ns("inicio_correccion_UTM"), "Aceptar"),
+      easyClose = FALSE # Obliga al usuario a aceptar para continuar
+    ))
+  })
+  
   ####### Realiza el ajuste de UTM planas
   observeEvent(input$inicio_correccion_UTM, {
+    removeModal()
+    
     print("Iniciando ajuste de correcciones")
     if (length(input$tabla_inicio_utm_rows_selected) == 0) {
       showNotification(
