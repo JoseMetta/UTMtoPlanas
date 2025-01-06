@@ -294,7 +294,10 @@ UTMPlanasModuleServer <- function(input, output, session) {
   output$panel_mapa <- renderUI({
     if (!is.null(datos$mapa_datos_input) && !is.null(datos$mapa_datos_resultados)) {
       print("Datos no nulos de entrada. Renderizando mapa")
-      leafletOutput(ns("mapa"))
+      tags$div(
+        style = "width: 100%; height: calc(100vh - 100px);", #ajusta el alto relativo a la ventana
+        leafletOutput(ns("mapa"), width = "100%", height = "100%") #asegura que ocupe todo el contenedor
+      )
     } else {
       h4("No hay datos disponibles para generar el mapa.")
     }
