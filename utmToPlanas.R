@@ -294,7 +294,10 @@ UTMPlanasModuleServer <- function(input, output, session) {
         leafletOutput(ns("mapa"), width = "100%", height = "100%") #asegura que ocupe todo el contenedor
       )
     } else {
-      h4("No hay datos disponibles para generar el mapa.")
+      tags$div(
+        h4("No hay datos disponibles para generar el mapa."),
+        style = "width: 100%; height: calc(100vh - 100px); background-color: #f5f5f5; border: 1px dashed #ccc; display: flex; justify-content: center; align-items: center;"  # Estilo para reservar espacio
+      )
     }
   })
   
