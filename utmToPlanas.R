@@ -142,7 +142,8 @@ UTMPlanasModuleUi <- function(id) {
 UTMPlanasModuleServer <- function(input, output, session) {
   ns <- session$ns
   #datos <- reactiveValues()
-  datos <- reactiveValues(mapa_datos_input = NULL, mapa_datos_resultados = NULL)
+  correccion_iniciada <- reactiveVal(FALSE)
+  datos <- reactiveValues(mapa_datos_input = NULL, mapa_datos_resultados = NULL, puntos_coordenadasUTM = NULL, correccion_utm = NULL, datos_utm_ordenados = NULL)
   
   ## Genera el panel de procesos al momento de cargar los datos
   # Cargar CRS al inicio
@@ -177,6 +178,7 @@ UTMPlanasModuleServer <- function(input, output, session) {
         width = 3,
         #selectInput(ns("crs"), "CRS", epsgGeodesicUtmFile$SRC),
         h4("UTM correction"),
+        helpText("Previamente escoja un punto pivote en la tabla"),
         actionButton(ns("inicio_mensaje_UTM"), label = "Start", class = "btn-info")
       ),
       mainPanel(
@@ -215,34 +217,66 @@ UTMPlanasModuleServer <- function(input, output, session) {
   ####### Realiza el ajuste de UTM planas
   observeEvent(input$inicio_correccion_UTM, {
     removeModal()
-    
-    print("Iniciando ajuste de correcciones")
-    if (length(input$tabla_inicio_utm_rows_selected) == 0) {
-      showNotification(
-        h4("Select a row regarding the pivot point"), 
-        action = NULL, duration = 5, type = "warning"
-      )
-      return()
+    correccion_iniciada(TRUE)
+    if (correccion_iniciada()) {
+      print("correccion_iniciada cambiada a TRUE")
     }
     
-    datos$datos_utm_ordenados <- rbind(
-      datos$puntos_coordenadasUTM[input$tabla_inicio_utm_rows_selected, ], 
-      datos$puntos_coordenadasUTM[-input$tabla_inicio_utm_rows_selected, ]
-    )
-    datos_utm <- datos$datos_utm_ordenados[, c(1:4)] # Ajusta índices si es necesario
+    selected_rows <- isolate(input$tabla_inicio_utm_rows_selected)
+    crs_input <- isolate(input$crs)
+    puntos_coordenadasUTM <- isolate(datos$puntos_coordenadasUTM)
+    datos_correccion_utm<- isolate(datos$correccion_utm)
+    datos_utm_ordenados <- isolate(datos$datos_utm_ordenados)
     
-    epsgGeodesicUtmFile <- read.csv("www/epsgGeodesicUtm.csv")
-    crs_UTM_input <- epsgGeodesicUtmFile[epsgGeodesicUtmFile$SRC %in% input$crs, "EPSG"]
-    print("Entrando a función UTM planas")
-    datos$correccion_utm <- funcion_UTM_planas(datos_utm[,-1], as.numeric(crs_UTM_input))
-    #añadido de nombres de puntos
-    datos$correccion_utm <- cbind(Punto = datos_utm[,1], datos$correccion_utm) # unir columnas de datos$correccion_utm con la primera columna de datos_utm que se llama "Punto"
+    invalidateLater(100, session)
+    later::later(function() {
+      print("Iniciando ajuste de correcciones")
+      if (length(selected_rows) == 0) {
+        showNotification(
+          h4("Select a row regarding the pivot point"), 
+          action = NULL, duration = 5, type = "warning"
+        )
+        correccion_iniciada(FALSE)  # Detener el spinner si hay error
+        return()
+      }
+      
+      # Procesar datos con los valores capturados
+      datos_utm_ordenados <- rbind(
+        puntos_coordenadasUTM[selected_rows, ], 
+        puntos_coordenadasUTM[-selected_rows, ]
+      )
+      datos_utm <- datos_utm_ordenados[, c(1:4)] # Ajusta índices si es necesario
+      
+      epsgGeodesicUtmFile <- read.csv("www/epsgGeodesicUtm.csv")
+      crs_UTM_input <- epsgGeodesicUtmFile[epsgGeodesicUtmFile$SRC %in% crs_input, "EPSG"]
+      print("Entrando a función UTM planas")
+      datos_correccion_utm <- funcion_UTM_planas(datos_utm[,-1], as.numeric(crs_UTM_input))
+      # Añadir nombres de puntos
+      datos_correccion_utm <- cbind(Punto = datos_utm[,1], datos_correccion_utm) # Unir columnas de datos$correccion_utm con la primera columna de datos_utm que se llama "Punto"
+      
+      correccion_iniciada(FALSE)  # Marca que la corrección ha finalizado
+      print("correccion_iniciada cambiada a FALSE")
+      datos$correccion_utm <- datos_correccion_utm
+      datos$datos_utm_ordenados <- datos_utm_ordenados
+    }, delay = 0.1)  # Ejecutar después de un breve delay
+    print(paste("Terminando el 'observeEvent(input$inicio_correccion_UTM' ¿correccion_utm es NULL?", is.null(datos$correccion_utm)))
   })
   
   ## Genera la ventana del mapa cuando los datos fueron creados correctamente
   ## MAPA
   
+  output$empty_output <- renderUI({
+    if (correccion_iniciada()) {
+      print("Generando spinner")
+      withSpinner(uiOutput("no_output"), color = "#0dc5c1")
+    } else {
+      print("Sin spinner generado")
+      h4("No hay resultados aún.")  # Mensaje predeterminado
+    }
+  })
+  
   output$results_ui <- renderUI({
+    print(paste("Evaluando results_ui. ¿correccion_utm es NULL?", is.null(datos$correccion_utm)))
     if (!is.null(datos$correccion_utm)) {
       fluidRow(
         column(
@@ -262,8 +296,8 @@ UTMPlanasModuleServer <- function(input, output, session) {
       fluidRow(
         column(
           12,
-          h4("No hay resultados aún."),
-          withSpinner(uiOutput("empty_output"), color = "#0dc5c1")
+          #h4("No hay resultados aún."),
+          uiOutput(ns("empty_output"))  # Este es dinámico
         )
       )
     }
@@ -330,12 +364,13 @@ UTMPlanasModuleServer <- function(input, output, session) {
     print("Generando mapa")
     print(datos$datos_utm_ordenados)
     datos_utm<-datos$datos_utm_ordenados[, c(1:4)]
-    
+    print(paste("Filas en datos_utm:", nrow(datos_utm)))
+    print(paste("Filas en datos$correccion_utm:", nrow(datos$correccion_utm)))
     ##crs cargados
     epsgGeodesicUtmFile <- read.csv("www/epsgGeodesicUtm.csv")
     crs_mapa_UTM_input <- epsgGeodesicUtmFile[epsgGeodesicUtmFile$SRC %in% input$crs_mapa_UTM,c("EPSG")]
     print("Crs cargados")
-    datos_mapa_UTM<-cbind(datos_utm,datos$correccion_utm)
+    datos_mapa_UTM<-cbind(datos_utm,datos$correccion_utm) #referencia del error
     print("Datos_mapa_UTM")
     print(datos_mapa_UTM)
     
