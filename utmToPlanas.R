@@ -165,14 +165,10 @@ UTMPlanasModuleServer <- function(input, output, session) {
     print("Archivo base de CRS guardado exitosamente")
   })
   
-  observeEvent(input$process, {
+  observeEvent(input$process, { #INICIO
     req(input$archivoC)
     print("Archivo cargado por usuario:")
     print(input$archivoC)
-  })
-  
-  observeEvent(input$process, { #INICIO
-    req(input$archivoC)
   
   output$panel_utm_planas <- renderUI(expr = if (!is.null(input$archivoC)) {
     print("Renderizando panel UTM Planas")
@@ -272,7 +268,6 @@ UTMPlanasModuleServer <- function(input, output, session) {
       )
     }
   })
-  
   
   output$results_table <- renderDataTable({
     req(datos$correccion_utm)
