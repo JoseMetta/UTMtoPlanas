@@ -123,7 +123,7 @@ UTMPlanasModuleUi <- function(id) {
       sidebarPanel(
         width = 3,
         fileInput(ns("archivoC"), label = h3("Subir archivo con datos"), accept = ".csv"),
-        helpText("Nota: Para archivos CSV de más de 1500 filas, considere un tiempo de conversión considerablemente elevado."),
+        helpText("Nota: Asegúrese de que su archivo CSV tenga el siguiente orden y nombres de columnas: Punto, ESTE, NORTE, h"),
         selectInput(ns("crs"), "Seleccione el CRS", choices = epsgGeodesicUtmFile$SRC, "Seleccione el CRS para el mapa generado"),  # Aquí debes cargar tus CRS
         actionButton(ns("process"), "Procesar")
       ),
@@ -210,7 +210,7 @@ UTMPlanasModuleServer <- function(input, output, session) {
     # Mostrar el mensaje modal inicial
     showModal(modalDialog(
       title = "Importante",
-      fluidRow(h4("Asegúrese de que su archivo CSV tenga el siguiente orden y nombres de columnas: Punto, ESTE, NORTE, h")),
+      fluidRow(h4("Advertencia: Considere un tiempo elevado de conversión para archivos con más de 1500 filas de entrada")),
       footer = actionButton(ns("inicio_correccion_UTM"), "Aceptar"),
       easyClose = FALSE # Obliga al usuario a aceptar para continuar
     ))
