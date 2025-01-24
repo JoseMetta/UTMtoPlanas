@@ -123,7 +123,7 @@ UTMPlanasModuleUi <- function(id) {
       sidebarPanel(
         width = 3,
         fileInput(ns("archivoC"), label = h3("Subir archivo con datos"), accept = ".csv"),
-        helpText("Nota: Asegúrese de que su archivo CSV tenga el siguiente orden y nombres de columnas: Punto, ESTE, NORTE, h"),
+        helpText("Nota: Considere un tiempo elevado de conversión para archivos con más de 1500 filas de entrada"),
         selectInput(ns("crs"), "Seleccione el CRS", choices = epsgGeodesicUtmFile$SRC, "Seleccione el CRS para el mapa generado"),  # Aquí debes cargar tus CRS
         actionButton(ns("process"), "Procesar")
       ),
@@ -170,27 +170,35 @@ UTMPlanasModuleServer <- function(input, output, session) {
     req(input$archivoC)
     print("Archivo cargado por usuario:")
     print(input$archivoC)
-  
-  output$panel_utm_planas <- renderUI(expr = if (!is.null(input$archivoC)) {
-    print("Renderizando panel UTM Planas")
-    fluidPage(
-      sidebarPanel(
-        width = 3,
-        #selectInput(ns("crs"), "CRS", epsgGeodesicUtmFile$SRC),
-        h4("UTM correction"),
-        helpText("Previamente escoja un punto pivote en la tabla"),
-        actionButton(ns("inicio_mensaje_UTM"), label = "Start", class = "btn-info")
-      ),
-      mainPanel(
-        class = "well",
-        h4("Select a row in the table (pivot point)"),
-        dataTableOutput(ns("tabla_inicio_utm"))
-      )
-    )   
-  } else {
-    NULL
-  })
-  
+    
+    output$panel_utm_planas <- renderUI(expr = if (!is.null(input$archivoC)) {
+      print("Renderizando panel UTM Planas")
+      fluidPage(
+        sidebarPanel(
+          width = 3,
+          selectInput(ns("col_nombre_UTM"), label = "Point-name column",
+                      choices = names(datos$puntos_coordenadasUTM), selected=names(datos$puntos_coordenadasUTM)[1]),
+          selectInput(ns("col_E_UTM"), label = "Column E(East)",
+                      choices = names(datos$puntos_coordenadasUTM), selected=names(datos$puntos_coordenadasUTM)[2]),
+          selectInput(ns("col_N_UTM"), label = "Column N(North)",
+                      choices = names(datos$puntos_coordenadasUTM), selected=names(datos$puntos_coordenadasUTM)[3]),
+          selectInput(ns("col_h_UTM"), label = "Column h(ellipsoidal heights)",
+                      choices = names(datos$puntos_coordenadasUTM), selected=names(datos$puntos_coordenadasUTM)[4]),
+          #selectInput(ns("crs"), "CRS", epsgGeodesicUtmFile$SRC),
+          h4("UTM correction"),
+          helpText("Previamente escoja un punto pivote en la tabla"),
+          actionButton(ns("inicio_correccion_UTM"), label = "Start", class = "btn-info")
+        ),
+        mainPanel(
+          class = "well",
+          h4("Select a row in the table (pivot point)"),
+          dataTableOutput(ns("tabla_inicio_utm"))
+        )
+      )   
+    } else {
+      NULL
+    })
+    
   }) #FINAL
   
   ## Genera la tabla al momento de cargar los datos
@@ -204,15 +212,15 @@ UTMPlanasModuleServer <- function(input, output, session) {
     ), selection = 'single')
   })
   
-  observeEvent(input$inicio_mensaje_UTM, {
-    # Mostrar el mensaje modal inicial
-    showModal(modalDialog(
-      title = "Importante",
-      fluidRow(h4("Advertencia: Considere un tiempo elevado de conversión para archivos con más de 1500 filas de entrada")),
-      footer = actionButton(ns("inicio_correccion_UTM"), "Aceptar"),
-      easyClose = FALSE # Obliga al usuario a aceptar para continuar
-    ))
-  })
+  #observeEvent(input$inicio_mensaje_UTM, {
+  #  # Mostrar el mensaje modal inicial
+  #  showModal(modalDialog(
+  #    title = "Importante",
+  #    fluidRow(h4("Advertencia: Considere un tiempo elevado de conversión para archivos con más de 1500 filas de entrada")),
+  #    footer = actionButton(ns("inicio_correccion_UTM"), "Aceptar"),
+  #    easyClose = FALSE # Obliga al usuario a aceptar para continuar
+  #  ))
+  #})
   
   ####### Realiza el ajuste de UTM planas
   observeEvent(input$inicio_correccion_UTM, {
@@ -227,26 +235,36 @@ UTMPlanasModuleServer <- function(input, output, session) {
     puntos_coordenadasUTM <- isolate(datos$puntos_coordenadasUTM)
     datos_correccion_utm<- isolate(datos$correccion_utm)
     datos_utm_ordenados <- isolate(datos$datos_utm_ordenados)
+    col_nombre_UTM <- isolate(input$col_nombre_UTM)
+    col_E_UTM <- isolate(input$col_E_UTM)
+    col_N_UTM <- isolate(input$col_N_UTM)
+    col_h_UTM <- isolate(input$col_h_UTM)
+    
+    if (length(input$tabla_inicio_utm_rows_selected) == 0) {
+      showModal(
+        modalDialog(
+          title = "Advertencia",
+          "No se ha seleccionado ninguna fila. Por favor, selecciona una fila antes de continuar.",
+          easyClose = TRUE,
+          footer = modalButton("Cerrar")
+        )
+      )
+      correccion_iniciada(FALSE)  # Detener el spinner si hay error
+      return()
+    }
     
     invalidateLater(100, session)
     later::later(function() {
       print("Iniciando ajuste de correcciones")
-      if (length(selected_rows) == 0) {
-        showNotification(
-          h4("Select a row regarding the pivot point"), 
-          action = NULL, duration = 5, type = "warning"
-        )
-        correccion_iniciada(FALSE)  # Detener el spinner si hay error
-        return()
-      }
       
       # Procesar datos con los valores capturados
       datos_utm_ordenados <- rbind(
         puntos_coordenadasUTM[selected_rows, ], 
         puntos_coordenadasUTM[-selected_rows, ]
       )
-      datos_utm <- datos_utm_ordenados[, c(1:4)] # Ajusta índices si es necesario
-      
+      datos_utm<-datos_utm_ordenados[,c(col_nombre_UTM,col_E_UTM,col_N_UTM,col_h_UTM)]
+      #datos_utm <- datos_utm_ordenados[, c(1:4)] # Ajusta índices si es necesario
+      names(datos_utm)<-c("Punto","ESTE","NORTE","h")
       epsgGeodesicUtmFile <- read.csv("www/epsgGeodesicUtm.csv")
       crs_UTM_input <- epsgGeodesicUtmFile[epsgGeodesicUtmFile$SRC %in% crs_input, "EPSG"]
       print("Entrando a función UTM planas")
@@ -286,8 +304,8 @@ UTMPlanasModuleServer <- function(input, output, session) {
           downloadLink(ns('descarga_utm_correccion'), 'Descargar Resultados'),
           h1("Generación de mapa interactivo"),
           column(10,
-                 selectInput(ns("crs_mapa_UTM"), "Seleccione el CRS", epsgGeodesicUtmFile$SRC, "Seleccione el sistema de coordenadas CRS para la conversión"),
-                 actionButton(ns("crear_mapa_utm"), "Start"),
+                 #selectInput(ns("crs_mapa_UTM"), "Seleccione el CRS", epsgGeodesicUtmFile$SRC, "Seleccione el sistema de coordenadas CRS para la conversión"),
+                 actionButton(ns("crear_mapa_utm"), "Mostrar mapa"),
                  uiOutput(ns("panel_mapa")) 
           )
         )
@@ -329,14 +347,14 @@ UTMPlanasModuleServer <- function(input, output, session) {
       )
     } else {
       tags$div(
-        h4("No hay datos disponibles para generar el mapa."),
+        h4("Esperando indicación de renderizado de mapa"),
         style = "width: 100%; height: calc(100vh - 100px); background-color: #f5f5f5; border: 1px dashed #ccc; display: flex; justify-content: center; align-items: center;"  # Estilo para reservar espacio
       )
     }
   })
   
   ## Crea el mapa
-  output$mapa<- renderLeaflet({
+  output$mapa <- renderLeaflet({
     req(datos$mapa_datos_input, datos$mapa_datos_resultados)
     
     print("Datos de entrada para el mapa:")
@@ -344,17 +362,32 @@ UTMPlanasModuleServer <- function(input, output, session) {
     print("Datos de resultados para el mapa:")
     print(st_geometry(datos$mapa_datos_resultados))
     
-    mapa<-leaflet() %>%
-      addProviderTiles(providers$OpenStreetMap.Mapnik, group = "OpenStreetMap.Mapnik") %>%
-      addProviderTiles(providers$Esri.WorldImagery, group = "Esri.WorldImagery") %>%
+    mapa <- leaflet() %>%
+      addProviderTiles(
+        providers$OpenStreetMap.Mapnik,
+        group = "OpenStreetMap.Mapnik"
+      ) %>%
+      addProviderTiles(
+        providers$Esri.WorldImagery,
+        group = "Esri.WorldImagery",
+        options = providerTileOptions(maxZoom = 17) #ajusta el nivel máximo de zoom para Esri
+      ) %>%
       addLayersControl(
-        baseGroups = c("OpenStreetMap.Mapnik","Esri.WorldImagery"),
+        baseGroups = c("OpenStreetMap.Mapnik", "Esri.WorldImagery"),
         overlayGroups = c("Control Points", "Results")
-      )%>%
-      addCircleMarkers(data = datos$mapa_datos_input, color = "red", group = "Control Points",
-                       label = ~as.character(datos$mapa_datos_input$Punto))%>%
-      addCircleMarkers(data=datos$mapa_datos_resultados, color="blue", group = "Results",
-                       label = ~as.character(datos$mapa_datos_input$Punto))
+      ) %>%
+      addCircleMarkers(
+        data = datos$mapa_datos_input, 
+        color = "red", 
+        group = "Control Points",
+        label = ~as.character(datos$mapa_datos_input$Punto)
+      ) %>%
+      addCircleMarkers(
+        data = datos$mapa_datos_resultados, 
+        color = "blue", 
+        group = "Results",
+        label = ~as.character(datos$mapa_datos_input$Punto)
+      )
     
     mapa
   })
@@ -368,7 +401,7 @@ UTMPlanasModuleServer <- function(input, output, session) {
     print(paste("Filas en datos$correccion_utm:", nrow(datos$correccion_utm)))
     ##crs cargados
     epsgGeodesicUtmFile <- read.csv("www/epsgGeodesicUtm.csv")
-    crs_mapa_UTM_input <- epsgGeodesicUtmFile[epsgGeodesicUtmFile$SRC %in% input$crs_mapa_UTM,c("EPSG")]
+    crs_mapa_UTM_input <- epsgGeodesicUtmFile[epsgGeodesicUtmFile$SRC %in% input$crs,c("EPSG")]
     print("Crs cargados")
     datos_mapa_UTM<-cbind(datos_utm,datos$correccion_utm) #referencia del error
     print("Datos_mapa_UTM")
